@@ -1,4 +1,8 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -8,8 +12,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:android_intent_plus/android_intent.dart';
-// import 'package:platform/platform.dart'; // Bawaan android_intent biasanya butuh ini, tapi opsional
+// import 'package:android_intent_plus/android_intent.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,29 +39,51 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// 1. GATEKEEPER
-class KioskGuardian extends StatelessWidget {
+class KioskGuardian extends StatefulWidget {
   const KioskGuardian({super.key});
 
   @override
+  State<KioskGuardian> createState() => _KioskGuardianState();
+}
+
+class _KioskGuardianState extends State<KioskGuardian> {
+  bool _isBypass = false; // Status Jalur Darurat
+
+  void _activateBypass() {
+    setState(() {
+      _isBypass = true;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isBypass) {
+      return const ExamPage(isBypassMode: true);
+    }
+
     return StreamBuilder<KioskMode>(
       stream: watchKioskMode(),
       builder: (context, snapshot) {
         final mode = snapshot.data;
+
         if (mode == null)
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
-        if (mode == KioskMode.enabled) return const ExamPage();
-        return const WarningPage();
+
+        if (mode == KioskMode.enabled) {
+          return const ExamPage(isBypassMode: false);
+        }
+
+        return WarningPage(onBypass: _activateBypass);
       },
     );
   }
 }
 
 class WarningPage extends StatefulWidget {
-  const WarningPage({super.key});
+  final VoidCallback onBypass;
+  const WarningPage({super.key, required this.onBypass});
 
   @override
   State<WarningPage> createState() => _WarningPageState();
@@ -66,8 +91,7 @@ class WarningPage extends StatefulWidget {
 
 class _WarningPageState extends State<WarningPage> {
   String _brand = "";
-  String _guideText =
-      "Buka Pengaturan > Keamanan > Screen Pinning > ON"; // Default
+  String _guideText = "Buka Pengaturan > Keamanan > Screen Pinning > ON";
   String _errorMessage = "";
 
   @override
@@ -77,33 +101,31 @@ class _WarningPageState extends State<WarningPage> {
   }
 
   Future<void> _detectDeviceBrand() async {
-    final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-
-    setState(() {
-      _brand = androidInfo.manufacturer.toLowerCase();
-      _setGuideText(_brand);
-    });
+    if (Platform.isAndroid) {
+      final DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+      setState(() {
+        _brand = androidInfo.manufacturer.toLowerCase();
+        _setGuideText(_brand);
+      });
+    }
   }
 
   void _setGuideText(String brand) {
     if (brand.contains('oppo') || brand.contains('realme')) {
       _guideText =
-          "1. Buka Pengaturan > Kata Sandi & Keamanan\n2. Pilih 'Keamanan Sistem' / 'More Security'\n3. Cari 'Penyematan Layar' (Screen Pinning) -> ON\n4. WAJIB Matikan Gesture Usap, ganti ke Tombol Navigasi.";
+          "1. Pengaturan > Kata Sandi & Keamanan > Keamanan Sistem\n2. Cari 'Penyematan Layar' -> ON\n3. WAJIB Matikan Gesture Usap, ganti ke Tombol Navigasi.";
     } else if (brand.contains('vivo')) {
       _guideText =
-          "1. Buka Pengaturan > Keamanan & Privasi\n2. Pilih 'More Security Settings'\n3. Aktifkan 'Penyematan Layar' (Screen Pinning).\n4. Gunakan Tombol Navigasi Biasa.";
+          "1. Pengaturan > Keamanan & Privasi > More Security Settings\n2. Aktifkan 'Penyematan Layar'.\n3. Gunakan Tombol Navigasi Biasa.";
     } else if (brand.contains('xiaomi') ||
         brand.contains('redmi') ||
         brand.contains('poco')) {
       _guideText =
-          "1. Buka Setelan > Sandi & Keamanan > Privasi\n2. Cari 'Penyematan Layar'.\n3. Jika pakai Fullscreen Gesture, matikan dulu.";
-    } else if (brand.contains('infinix') || brand.contains('tecno')) {
-      _guideText =
-          "1. Buka Pengaturan > Keamanan\n2. Cari 'Penyematan Layar' di paling bawah.";
+          "1. Setelan > Sandi & Keamanan > Privasi > Penyematan Layar.\n2. Matikan Fullscreen Gesture.";
     } else if (brand.contains('samsung')) {
       _guideText =
-          "1. Buka Pengaturan > Biometrik & Keamanan > Pengaturan Keamanan Lainnya\n2. Aktifkan 'Sematkan Jendela'.";
+          "1. Pengaturan > Biometrik & Keamanan > Pengaturan Keamanan Lainnya > Sematkan Jendela.";
     }
   }
 
@@ -112,10 +134,61 @@ class _WarningPageState extends State<WarningPage> {
     await intent.launch();
   }
 
+  // DIALOG RAHASIA KHUSUS GURU
+  Future<void> _showEmergencyDialog() async {
+    final TextEditingController passController = TextEditingController();
+    return showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Mode Darurat (Guru Only)"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Gunakan ini HANYA jika HP siswa tidak support Screen Pinning.\n\nSiswa akan kena AUTO-RELOAD jika mencoba keluar aplikasi.",
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: passController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: "Password Pengawas",
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Batal"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () {
+                // --- SETTING PASSWORD GURU DI SINI ---
+                if (passController.text == "jujur2025") {
+                  Navigator.pop(context);
+                  widget.onBypass(); // Aktifkan Bypass
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Password Salah!")),
+                  );
+                }
+              },
+              child: const Text(
+                "Masuk Paksa",
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    String displayBrand = _brand.toUpperCase();
-
     return Scaffold(
       backgroundColor: Colors.red.shade50,
       body: Center(
@@ -136,7 +209,6 @@ class _WarningPageState extends State<WarningPage> {
                 ),
               ),
               const SizedBox(height: 10),
-
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 15,
@@ -147,27 +219,22 @@ class _WarningPageState extends State<WarningPage> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  "HP Terdeteksi: $displayBrand",
+                  "HP Terdeteksi: ${_brand.toUpperCase()}",
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.red,
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
               Card(
                 elevation: 3,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
                 child: Padding(
                   padding: const EdgeInsets.all(15.0),
                   child: Column(
                     children: [
                       const Text(
-                        "CARA MENGATASI:",
+                        "PANDUAN AKTIVASI:",
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       const Divider(),
@@ -177,20 +244,16 @@ class _WarningPageState extends State<WarningPage> {
                         style: const TextStyle(fontSize: 13, height: 1.5),
                       ),
                       const SizedBox(height: 15),
-                      // TOMBOL PINTAS KE SETTING
                       OutlinedButton.icon(
                         icon: const Icon(Icons.settings),
-                        label: const Text("Buka Pengaturan Keamanan"),
+                        label: const Text("Buka Pengaturan"),
                         onPressed: _openSecuritySettings,
                       ),
                     ],
                   ),
                 ),
               ),
-
               const SizedBox(height: 20),
-
-              // ERROR MESSAGE (Kalau masih gagal)
               if (_errorMessage.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
@@ -200,7 +263,6 @@ class _WarningPageState extends State<WarningPage> {
                     textAlign: TextAlign.center,
                   ),
                 ),
-
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
@@ -208,10 +270,6 @@ class _WarningPageState extends State<WarningPage> {
                   padding: const EdgeInsets.symmetric(
                     horizontal: 40,
                     vertical: 15,
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 icon: const Icon(Icons.check_circle),
@@ -221,12 +279,25 @@ class _WarningPageState extends State<WarningPage> {
                     setState(() => _errorMessage = "");
                     await startKioskMode();
                   } catch (e) {
-                    setState(() {
-                      _errorMessage =
-                          "Masih Gagal. Pastikan 'Screen Pinning' sudah ON dan JANGAN pakai Gesture Usap.";
-                    });
+                    setState(
+                      () => _errorMessage =
+                          "Gagal Mengunci. Cek Panduan di atas.",
+                    );
                   }
                 },
+              ),
+              const SizedBox(height: 40),
+              // TOMBOL RAHASIA
+              TextButton(
+                onPressed: _showEmergencyDialog,
+                child: const Text(
+                  "HP Tidak Support? Klik di sini",
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 12,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
             ],
           ),
@@ -236,25 +307,57 @@ class _WarningPageState extends State<WarningPage> {
   }
 }
 
+// ==========================================
+// 3. EXAM PAGE (WEBVIEW + ANTI CURANG)
+// ==========================================
 class ExamPage extends StatefulWidget {
-  const ExamPage({super.key});
+  final bool isBypassMode;
+  const ExamPage({super.key, this.isBypassMode = false});
+
   @override
   State<ExamPage> createState() => _ExamPageState();
 }
 
-class _ExamPageState extends State<ExamPage> {
+class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _isLoading = true;
-  // GANTI URL DI SINI
-  final String _examUrl = "https://ujian.smkairlanggabpn.sch.id";
-  // bool _isError = false;
-  // String _errorDescription = "";
+
+  // --- GANTI IP SERVER DI SINI ---
+  final String _examUrl = "https://ujian.smkairlanggabpn.sch.id/";
+  // ------------------------------
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // Pantau aplikasi
     _initSecurity();
     _initWebView();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ScreenProtector.preventScreenshotOff();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (widget.isBypassMode) {
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.inactive) {
+        debugPrint("KECURANGAN TERDETEKSI: RELOAD PAKSA");
+        _controller.reload(); // Hukuman: Refresh Halaman
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("ANDA KELUAR APLIKASI! Halaman dimuat ulang."),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _initSecurity() async {
@@ -271,48 +374,54 @@ class _ExamPageState extends State<ExamPage> {
         NavigationDelegate(
           onPageStarted: (url) => setState(() => _isLoading = true),
           onPageFinished: (url) => setState(() => _isLoading = false),
-          // NEW ERROR HANDLER
           onWebResourceError: (WebResourceError error) {
-            setState(() {
-              _isLoading = false;
-            });
-
+            setState(() => _isLoading = false);
+            // Tampilkan Notifikasi Error Merah
             if (error.errorCode < 0) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  backgroundColor:
-                      Colors.redAccent, // Warna Merah biar kelihatan warning
-                  duration: const Duration(
-                    seconds: 10,
-                  ), // Tampil agak lama (10 detik)
+                  backgroundColor: Colors.redAccent,
+                  duration: const Duration(seconds: 10),
                   content: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        "Gagal Terhubung ke Server!",
+                        "Gagal Terhubung!",
                         style: TextStyle(fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        "Error: ${error.description}",
+                        "${error.description}",
                         style: const TextStyle(fontSize: 12),
                       ),
                       const Text(
-                        "Cek: Matikan Data Seluler & Pastikan WiFi Sekolah On.",
+                        "Matikan Data Seluler, Pakai WiFi Sekolah.",
                         style: TextStyle(fontSize: 10, color: Colors.yellow),
                       ),
                     ],
                   ),
                   action: SnackBarAction(
-                    label: 'COBA LAGI', // Tombol Reload
+                    label: 'COBA LAGI',
                     textColor: Colors.white,
-                    onPressed: () {
-                      _controller.reload();
-                    },
+                    onPressed: () => _controller.reload(),
                   ),
                 ),
               );
             }
+          },
+        ),
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            setState(() {
+              _isLoading = true;
+            });
+          },
+          onPageFinished: (String url) {
+            setState(() {
+              _isLoading = false;
+            });
           },
         ),
       )
@@ -329,7 +438,9 @@ class _ExamPageState extends State<ExamPage> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Keluar Ujian?'),
-          content: const Text('Pastikan sudah LOGOUT.'),
+          content: const Text(
+            'Pastikan Anda sudah LOGOUT dan mengirim jawaban.',
+          ),
           actions: <Widget>[
             TextButton(
               child: const Text('Batal'),
@@ -337,15 +448,15 @@ class _ExamPageState extends State<ExamPage> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text(
-                'KELUAR',
-                style: TextStyle(color: Colors.white),
-              ),
               onPressed: () async {
                 await stopKioskMode();
                 await ScreenProtector.preventScreenshotOff();
                 SystemNavigator.pop();
               },
+              child: const Text(
+                'KELUAR',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         );
@@ -358,20 +469,32 @@ class _ExamPageState extends State<ExamPage> {
     return PopScope(
       canPop: false,
       child: Scaffold(
+        resizeToAvoidBottomInset: true,
+
         appBar: AppBar(
           titleSpacing: 0,
           leading: IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => _controller.reload(),
           ),
-          title: const Column(
+          title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 "SMKS Airlangga",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              Text("CBT Online v2.1.5", style: TextStyle(fontSize: 12)),
+              Text(
+                widget.isBypassMode
+                    ? "MODE DARURAT (UNPINNED)"
+                    : "CBT Online v2.1.9",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: widget.isBypassMode
+                      ? Colors.yellowAccent
+                      : Colors.white70,
+                ),
+              ),
             ],
           ),
           actions: [
@@ -387,7 +510,20 @@ class _ExamPageState extends State<ExamPage> {
         ),
         body: Stack(
           children: [
-            WebViewWidget(controller: _controller),
+            WebViewWidget(
+              controller: _controller,
+              gestureRecognizers: Set()
+                ..add(
+                  Factory<VerticalDragGestureRecognizer>(
+                    () => VerticalDragGestureRecognizer(),
+                  ),
+                )
+                ..add(
+                  Factory<EagerGestureRecognizer>(
+                    () => EagerGestureRecognizer(),
+                  ),
+                ),
+            ),
             if (_isLoading) const LinearProgressIndicator(),
           ],
         ),
@@ -405,6 +541,7 @@ class ExamStatusBar extends StatefulWidget {
 class _ExamStatusBarState extends State<ExamStatusBar> {
   final Battery _battery = Battery();
   int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.full;
   String _timeString = "";
   bool _isConnected = true;
   Timer? _timer;
@@ -412,7 +549,7 @@ class _ExamStatusBarState extends State<ExamStatusBar> {
   @override
   void initState() {
     super.initState();
-    _getBattery();
+    _initBattery();
     _checkConnectivity();
     _timer = Timer.periodic(
       const Duration(seconds: 1),
@@ -420,20 +557,32 @@ class _ExamStatusBarState extends State<ExamStatusBar> {
     );
   }
 
-  void _getBattery() async {
+  void _initBattery() async {
     final level = await _battery.batteryLevel;
-    setState(() => _batteryLevel = level);
-    _battery.onBatteryStateChanged.listen((state) async {
+    final state = await _battery.batteryState;
+    if (mounted)
+      setState(() {
+        _batteryLevel = level;
+        _batteryState = state;
+      });
+
+    _battery.onBatteryStateChanged.listen((BatteryState state) async {
       final l = await _battery.batteryLevel;
-      setState(() => _batteryLevel = l);
+      if (mounted)
+        setState(() {
+          _batteryState = state;
+          _batteryLevel = l;
+        });
     });
   }
 
   void _getTime() {
     final DateTime now = DateTime.now();
-    final String formattedTime =
-        "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}";
-    if (mounted) setState(() => _timeString = formattedTime);
+    if (mounted)
+      setState(
+        () => _timeString =
+            "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}",
+      );
   }
 
   void _checkConnectivity() {
@@ -453,6 +602,19 @@ class _ExamStatusBarState extends State<ExamStatusBar> {
     super.dispose();
   }
 
+  Color _getBatteryColor() {
+    if (_batteryState == BatteryState.charging) return Colors.greenAccent;
+    if (_batteryLevel <= 20) return Colors.redAccent;
+    return Colors.white;
+  }
+
+  IconData _getBatteryIcon() {
+    if (_batteryState == BatteryState.charging)
+      return Icons.battery_charging_full;
+    if (_batteryLevel <= 20) return Icons.battery_alert;
+    return Icons.battery_full;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -465,13 +627,16 @@ class _ExamStatusBarState extends State<ExamStatusBar> {
           color: _isConnected ? Colors.white : Colors.red,
         ),
         const SizedBox(width: 8),
-        Text("$_batteryLevel%", style: const TextStyle(fontSize: 12)),
-        const SizedBox(width: 2),
-        Icon(
-          _batteryLevel > 20 ? Icons.battery_full : Icons.battery_alert,
-          size: 18,
-          color: _batteryLevel > 20 ? Colors.white : Colors.red,
+        Text(
+          "$_batteryLevel%",
+          style: TextStyle(
+            fontSize: 12,
+            color: _getBatteryColor(),
+            fontWeight: FontWeight.bold,
+          ),
         ),
+        const SizedBox(width: 2),
+        Icon(_getBatteryIcon(), size: 18, color: _getBatteryColor()),
         const SizedBox(width: 5),
       ],
     );
