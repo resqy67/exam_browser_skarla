@@ -1,4 +1,4 @@
-package com.example.exam_skarlaa
+package com.skarla.exambrowser
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -272,7 +272,9 @@ class _ExamPageState extends State<ExamPage> {
           onWebResourceError: (error) {},
         ),
       )
-      ..setUserAgent("Mozilla/5.0 (Linux; Android 10) ... ExamSkarla")
+      ..setUserAgent(
+        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 ExamSkarla",
+      )
       ..loadRequest(Uri.parse(_examUrl));
   }
 
@@ -325,7 +327,7 @@ class _ExamPageState extends State<ExamPage> {
                 "SMKS Airlangga",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
-              Text("CBT Online", style: TextStyle(fontSize: 12)),
+              Text("CBT Online v2.1.5", style: TextStyle(fontSize: 12)),
             ],
           ),
           actions: [
