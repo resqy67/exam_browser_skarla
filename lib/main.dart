@@ -247,6 +247,8 @@ class _ExamPageState extends State<ExamPage> {
   bool _isLoading = true;
   // GANTI URL DI SINI
   final String _examUrl = "https://ujian.smkairlanggabpn.sch.id";
+  // bool _isError = false;
+  // String _errorDescription = "";
 
   @override
   void initState() {
@@ -269,7 +271,49 @@ class _ExamPageState extends State<ExamPage> {
         NavigationDelegate(
           onPageStarted: (url) => setState(() => _isLoading = true),
           onPageFinished: (url) => setState(() => _isLoading = false),
-          onWebResourceError: (error) {},
+          // NEW ERROR HANDLER
+          onWebResourceError: (WebResourceError error) {
+            setState(() {
+              _isLoading = false;
+            });
+
+            if (error.errorCode < 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor:
+                      Colors.redAccent, // Warna Merah biar kelihatan warning
+                  duration: const Duration(
+                    seconds: 10,
+                  ), // Tampil agak lama (10 detik)
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Gagal Terhubung ke Server!",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        "Error: ${error.description}",
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      const Text(
+                        "Cek: Matikan Data Seluler & Pastikan WiFi Sekolah On.",
+                        style: TextStyle(fontSize: 10, color: Colors.yellow),
+                      ),
+                    ],
+                  ),
+                  action: SnackBarAction(
+                    label: 'COBA LAGI', // Tombol Reload
+                    textColor: Colors.white,
+                    onPressed: () {
+                      _controller.reload();
+                    },
+                  ),
+                ),
+              );
+            }
+          },
         ),
       )
       ..setUserAgent(
