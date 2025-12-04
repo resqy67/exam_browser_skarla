@@ -603,8 +603,8 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
               ),
               Text(
                 widget.isBypassMode
-                    ? "MODE DARURAT v2.2.0"
-                    : "CBT Online v2.2.0",
+                    ? "MODE DARURAT v2.2.1"
+                    : "CBT Online v2.2.1",
                 style: TextStyle(
                   fontSize: 12,
                   color: widget.isBypassMode
