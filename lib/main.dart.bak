@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert'; // Untuk baca JSON
-import 'package:http/http.dart' as http; // Untuk request ke server
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -14,6 +12,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+// import 'package:android_intent_plus/android_intent.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +47,7 @@ class KioskGuardian extends StatefulWidget {
 }
 
 class _KioskGuardianState extends State<KioskGuardian> {
-  bool _isBypass = false;
+  bool _isBypass = false; // Status Jalur Darurat
 
   void _activateBypass() {
     setState(() {
@@ -67,11 +66,10 @@ class _KioskGuardianState extends State<KioskGuardian> {
       builder: (context, snapshot) {
         final mode = snapshot.data;
 
-        if (mode == null) {
+        if (mode == null)
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
-        }
 
         if (mode == KioskMode.enabled) {
           return const ExamPage(isBypassMode: false);
@@ -95,30 +93,11 @@ class _WarningPageState extends State<WarningPage> {
   String _brand = "";
   String _guideText = "Buka Pengaturan > Keamanan > Screen Pinning > ON";
   String _errorMessage = "";
-  String _serverPassword = "jujur2025";
 
   @override
   void initState() {
     super.initState();
     _detectDeviceBrand();
-    _fetchServerConfig();
-  }
-
-  Future<void> _fetchServerConfig() async {
-    try {
-      final response = await http.get(
-        Uri.parse("https://ujian.smkairlanggabpn.sch.id/app-config.json"),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          _serverPassword = data['emergency_password'].toString();
-        });
-      }
-    } catch (e) {
-      debugPrint("Gagal ambil config server, pakai default.");
-    }
   }
 
   Future<void> _detectDeviceBrand() async {
@@ -155,6 +134,7 @@ class _WarningPageState extends State<WarningPage> {
     await intent.launch();
   }
 
+  // DIALOG RAHASIA KHUSUS GURU
   Future<void> _showEmergencyDialog() async {
     final TextEditingController passController = TextEditingController();
     return showDialog(
@@ -166,8 +146,7 @@ class _WarningPageState extends State<WarningPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Text(
-                "Gunakan ini HANYA jika HP siswa tidak support Screen Pinning.\n\nSiswa tetap diawasi oleh sistem Anti-Floating App.",
-                style: TextStyle(fontSize: 12),
+                "Gunakan ini HANYA jika HP siswa tidak support Screen Pinning.\n\nSiswa akan kena AUTO-RELOAD jika mencoba keluar aplikasi.",
               ),
               const SizedBox(height: 10),
               TextField(
@@ -187,9 +166,10 @@ class _WarningPageState extends State<WarningPage> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () {
-                if (passController.text == _serverPassword) {
+                // --- SETTING PASSWORD GURU DI SINI ---
+                if (passController.text == "jujur2025") {
                   Navigator.pop(context);
-                  widget.onBypass();
+                  widget.onBypass(); // Aktifkan Bypass
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text("Password Salah!")),
@@ -293,35 +273,32 @@ class _WarningPageState extends State<WarningPage> {
                   ),
                 ),
                 icon: const Icon(Icons.check_circle),
-                label: const Text("SAYA SUDAH ATUR, MULAI"),
+                label: const Text("SAYA SUDAH ATUR, MULAI UJIAN"),
                 onPressed: () async {
                   try {
                     setState(() => _errorMessage = "");
                     await startKioskMode();
-                    // throw Exception("Simulasi Pinning Gagal");
                   } catch (e) {
                     setState(
                       () => _errorMessage =
-                          "Gagal Mengunci. HP ini mungkin tidak support.",
+                          "Gagal Mengunci. Cek Panduan di atas.",
                     );
-                    if (context.mounted) {
-                      _showEmergencyDialog();
-                    }
                   }
                 },
               ),
-              // const SizedBox(height: 40),
-              // TextButton(
-              //   onPressed: _showEmergencyDialog,
-              //   child: const Text(
-              //     "HP Tidak Support? Klik di sini",
-              //     style: TextStyle(
-              //       color: Colors.redAccent,
-              //       fontSize: 12,
-              //       decoration: TextDecoration.underline,
-              //     ),
-              //   ),
-              // ),
+              const SizedBox(height: 40),
+              // TOMBOL RAHASIA
+              TextButton(
+                onPressed: _showEmergencyDialog,
+                child: const Text(
+                  "HP Tidak Support? Klik di sini",
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 12,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -330,6 +307,9 @@ class _WarningPageState extends State<WarningPage> {
   }
 }
 
+// ==========================================
+// 3. EXAM PAGE (WEBVIEW + ANTI CURANG)
+// ==========================================
 class ExamPage extends StatefulWidget {
   final bool isBypassMode;
   const ExamPage({super.key, this.isBypassMode = false});
@@ -341,20 +321,17 @@ class ExamPage extends StatefulWidget {
 class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _isLoading = true;
-  // bool _isObscured = false;
-  bool _isRefreshing = false;
-  bool _isViolationLocked = false;
-  String _serverPassword = "jujur2025";
 
+  // --- GANTI IP SERVER DI SINI ---
   final String _examUrl = "https://ujian.smkairlanggabpn.sch.id/";
+  // ------------------------------
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addObserver(this); // Pantau aplikasi
     _initSecurity();
     _initWebView();
-    _fetchServerConfig();
   }
 
   @override
@@ -365,121 +342,22 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) async {
-    super.didChangeAppLifecycleState(state);
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (widget.isBypassMode) {
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.inactive) {
+        debugPrint("KECURANGAN TERDETEKSI: RELOAD PAKSA");
+        _controller.reload(); // Hukuman: Refresh Halaman
 
-    String? currentUrl = await _controller.currentUrl();
-    bool isInsideExamRoom =
-        currentUrl != null && currentUrl.contains('/siswa/exams/room/');
-    if (_isRefreshing) return;
-    if (state != AppLifecycleState.resumed) {
-      // setState(() {
-      // _isObscured = true;
-      // });
-      // setState(() {
-      //   _isViolationLocked = true;
-      // });
-
-      if (isInsideExamRoom) {
-        setState(() {
-          _isViolationLocked = true; // KUNCI LAYAR MERAH
-        });
-        // debugPrint("Pelanggaran di Ruang Ujian: Terkunci.");
-      } else {
-        // debugPrint("Pelanggaran di Luar Ruang Ujian: Tidak dikunci.");
-      }
-    } else {
-      // setState(() {
-      //   _isObscured = false;
-      // });
-    }
-  }
-
-  Future<void> _fetchServerConfig() async {
-    try {
-      final response = await http.get(
-        Uri.parse("https://ujian.smkairlanggabpn.sch.id/app-config.json"),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          _serverPassword = data['violation_password'].toString();
-        });
-      }
-    } catch (e) {
-      // debugPrint("Gagal ambil config server, pakai default.");
-    }
-  }
-
-  Future<void> _unlockViolation() async {
-    final TextEditingController passController = TextEditingController();
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("⚠️ PELANGGARAN TERDETEKSI"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                "Siswa terdeteksi meninggalkan aplikasi / notifikasi / floating app.\n\nMasukkan Password dari panitia untuk membuka kembali.",
-                style: TextStyle(fontSize: 12, color: Colors.red),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: passController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: "Password Panitia",
-                ),
-              ),
-            ],
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("ANDA KELUAR APLIKASI! Halaman dimuat ulang."),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
           ),
-          actions: [
-            // Tombol Keluar (Kalau siswa nyerah)
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Batal"),
-            ),
-            // Tombol Buka Kunci
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () async {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Memverifikasi Password ke Server..."),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-                await _fetchServerConfig();
-                if (passController.text == _serverPassword) {
-                  Navigator.pop(context); // Tutup Dialog
-                  setState(() {
-                    _isViolationLocked = false; // BUKA KUNCI
-                  });
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Ujian Dilanjutkan. JANGAN ULANGI LAGI!"),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Password Salah!")),
-                  );
-                }
-              },
-              child: const Text(
-                "BUKA BLOKIR",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
         );
-      },
-    );
+      }
+    }
   }
 
   Future<void> _initSecurity() async {
@@ -492,48 +370,63 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
-      // ..enableZoom(true)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (url) => setState(() => _isLoading = true),
-          onPageFinished: (url) => setState(() {
-            _isLoading = false;
-            _isRefreshing = false;
-          }),
+          onPageFinished: (url) => setState(() => _isLoading = false),
           onWebResourceError: (WebResourceError error) {
             setState(() => _isLoading = false);
-            // if (error.errorCode < 0) {
-            //   ScaffoldMessenger.of(context).showSnackBar(
-            //     SnackBar(
-            //       backgroundColor: Colors.redAccent,
-            //       duration: const Duration(seconds: 10),
-            //       content: Column(
-            //         mainAxisSize: MainAxisSize.min,
-            //         crossAxisAlignment: CrossAxisAlignment.start,
-            //         children: [
-            //           const Text(
-            //             "Gagal Terhubung!",
-            //             style: TextStyle(fontWeight: FontWeight.bold),
-            //           ),
-            //           Text(
-            //             "${error.description}",
-            //             style: const TextStyle(fontSize: 12),
-            //           ),
-            //         ],
-            //       ),
-            //       action: SnackBarAction(
-            //         label: 'Refresh',
-            //         textColor: Colors.white,
-            //         onPressed: () => _controller.reload(),
-            //       ),
-            //     ),
-            //   );
-            // }
+            // Tampilkan Notifikasi Error Merah
+            if (error.errorCode < 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor: Colors.redAccent,
+                  duration: const Duration(seconds: 10),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Gagal Terhubung!",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        "${error.description}",
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      const Text(
+                        "Matikan Data Seluler, Pakai WiFi Sekolah.",
+                        style: TextStyle(fontSize: 10, color: Colors.yellow),
+                      ),
+                    ],
+                  ),
+                  action: SnackBarAction(
+                    label: 'COBA LAGI',
+                    textColor: Colors.white,
+                    onPressed: () => _controller.reload(),
+                  ),
+                ),
+              );
+            }
+          },
+        ),
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (String url) {
+            setState(() {
+              _isLoading = true;
+            });
+          },
+          onPageFinished: (String url) {
+            setState(() {
+              _isLoading = false;
+            });
           },
         ),
       )
       ..setUserAgent(
-        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 ExamApp/2.2",
+        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 ExamSkarla",
       )
       ..loadRequest(Uri.parse(_examUrl));
   }
@@ -577,22 +470,12 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
       canPop: false,
       child: Scaffold(
         resizeToAvoidBottomInset: true,
+
         appBar: AppBar(
           titleSpacing: 0,
           leading: IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                _isRefreshing = true;
-              });
-              _controller.reload().then((_) {
-                Future.delayed(const Duration(seconds: 5), () {
-                  if (mounted && _isRefreshing) {
-                    setState(() => _isRefreshing = false);
-                  }
-                });
-              });
-            },
+            onPressed: () => _controller.reload(),
           ),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,32 +486,27 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
               ),
               Text(
                 widget.isBypassMode
-                    ? "MODE DARURAT v2.2.1"
-                    : "CBT Online v2.2.1",
+                    ? "MODE DARURAT (UNPINNED)"
+                    : "CBT Online v2.1.9",
                 style: TextStyle(
                   fontSize: 12,
                   color: widget.isBypassMode
                       ? Colors.yellowAccent
                       : Colors.white70,
-                  fontWeight: widget.isBypassMode
-                      ? FontWeight.bold
-                      : FontWeight.normal,
                 ),
               ),
             ],
           ),
-          actions: _isViolationLocked
-              ? [const ExamStatusBar()]
-              : [
-                  const ExamStatusBar(),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.power_settings_new,
-                      color: Colors.redAccent,
-                    ),
-                    onPressed: _exitApp,
-                  ),
-                ],
+          actions: [
+            const ExamStatusBar(),
+            IconButton(
+              icon: const Icon(
+                Icons.power_settings_new,
+                color: Colors.redAccent,
+              ),
+              onPressed: _exitApp,
+            ),
+          ],
         ),
         body: Stack(
           children: [
@@ -646,125 +524,7 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
                   ),
                 ),
             ),
-
             if (_isLoading) const LinearProgressIndicator(),
-
-            if (_isViolationLocked)
-              Container(
-                color: Colors.red.shade900, // Merah Gelap Menakutkan
-                width: double.infinity,
-                height: double.infinity,
-                child: Padding(
-                  padding: const EdgeInsets.all(30.0),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.gpp_bad, size: 100, color: Colors.white),
-                      const SizedBox(height: 20),
-                      const Text(
-                        "PELANGGARAN TERDETEKSI!",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      const Text(
-                        "Anda terdeteksi membuka aplikasi lain / Floating App / Keluar dari ujian.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white70, fontSize: 16),
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        "Aplikasi TERKUNCI secara sistem.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.yellow,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 40),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.red,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 30,
-                            vertical: 15,
-                          ),
-                        ),
-                        icon: const Icon(Icons.lock_open),
-                        label: const Text("PANGGIL PENGAWAS (BUKA KUNCI)"),
-                        onPressed: _unlockViolation, // Panggil Dialog Password
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // if (_isObscured)
-            //   Container(
-            //     color: Color.fromARGB(228, 0, 0, 0),
-            //     width: double.infinity,
-            //     height: double.infinity,
-            //     child: Padding(
-            //       padding: const EdgeInsets.all(30.0),
-            //       child: Column(
-            //         mainAxisAlignment: MainAxisAlignment.center,
-            //         children: [
-            //           const Icon(
-            //             Icons.block,
-            //             size: 80,
-            //             color: Colors.redAccent,
-            //           ),
-            //           const SizedBox(height: 20),
-            //           const Text(
-            //             "AKTIVITAS DILARANG TERDETEKSI",
-            //             textAlign: TextAlign.center,
-            //             style: TextStyle(
-            //               color: Colors.white,
-            //               fontSize: 22,
-            //               fontWeight: FontWeight.bold,
-            //             ),
-            //           ),
-            //           const SizedBox(height: 15),
-            //           const Text(
-            //             "Aplikasi mendeteksi gangguan (Floating App, Notifikasi, atau Anda keluar aplikasi).",
-            //             textAlign: TextAlign.center,
-            //             style: TextStyle(color: Colors.white70, fontSize: 14),
-            //           ),
-            //           const SizedBox(height: 30),
-            //           Container(
-            //             padding: const EdgeInsets.all(15),
-            //             decoration: BoxDecoration(
-            //               color: Colors.white10,
-            //               borderRadius: BorderRadius.circular(10),
-            //               border: Border.all(color: Colors.redAccent),
-            //             ),
-            //             child: const Column(
-            //               children: [
-            //                 Text(
-            //                   "CARA MELANJUTKAN:",
-            //                   style: TextStyle(
-            //                     color: Colors.redAccent,
-            //                     fontWeight: FontWeight.bold,
-            //                   ),
-            //                 ),
-            //                 SizedBox(height: 5),
-            //                 Text(
-            //                   "1. Tutup aplikasi lain/floating app.\n2. Kembali sepenuhnya ke aplikasi ujian.\n3. Ketuk layar ini.",
-            //                   textAlign: TextAlign.center,
-            //                   style: TextStyle(color: Colors.white),
-            //                 ),
-            //               ],
-            //             ),
-            //           ),
-            //         ],
-            //       ),
-            //     ),
-            //   ),
           ],
         ),
       ),
@@ -805,6 +565,7 @@ class _ExamStatusBarState extends State<ExamStatusBar> {
         _batteryLevel = level;
         _batteryState = state;
       });
+
     _battery.onBatteryStateChanged.listen((BatteryState state) async {
       final l = await _battery.batteryLevel;
       if (mounted)
