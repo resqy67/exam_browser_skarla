@@ -342,6 +342,7 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _isLoading = true;
   // bool _isObscured = false;
+  bool _isRefreshing = false;
   bool _isViolationLocked = false;
   String _serverPassword = "jujur2025";
 
@@ -364,16 +365,29 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
     super.didChangeAppLifecycleState(state);
 
+    String? currentUrl = await _controller.currentUrl();
+    bool isInsideExamRoom =
+        currentUrl != null && currentUrl.contains('/siswa/exams/room/');
+    if (_isRefreshing) return;
     if (state != AppLifecycleState.resumed) {
       // setState(() {
       // _isObscured = true;
       // });
-      setState(() {
-        _isViolationLocked = true;
-      });
+      // setState(() {
+      //   _isViolationLocked = true;
+      // });
+
+      if (isInsideExamRoom) {
+        setState(() {
+          _isViolationLocked = true; // KUNCI LAYAR MERAH
+        });
+        // debugPrint("Pelanggaran di Ruang Ujian: Terkunci.");
+      } else {
+        // debugPrint("Pelanggaran di Luar Ruang Ujian: Tidak dikunci.");
+      }
     } else {
       // setState(() {
       //   _isObscured = false;
@@ -394,7 +408,7 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
         });
       }
     } catch (e) {
-      debugPrint("Gagal ambil config server, pakai default.");
+      // debugPrint("Gagal ambil config server, pakai default.");
     }
   }
 
@@ -482,7 +496,10 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (url) => setState(() => _isLoading = true),
-          onPageFinished: (url) => setState(() => _isLoading = false),
+          onPageFinished: (url) => setState(() {
+            _isLoading = false;
+            _isRefreshing = false;
+          }),
           onWebResourceError: (WebResourceError error) {
             setState(() => _isLoading = false);
             // if (error.errorCode < 0) {
@@ -516,7 +533,7 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
         ),
       )
       ..setUserAgent(
-        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 ExamApp",
+        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 ExamApp/2.2",
       )
       ..loadRequest(Uri.parse(_examUrl));
   }
@@ -564,7 +581,18 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
           titleSpacing: 0,
           leading: IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => _controller.reload(),
+            onPressed: () {
+              setState(() {
+                _isRefreshing = true;
+              });
+              _controller.reload().then((_) {
+                Future.delayed(const Duration(seconds: 5), () {
+                  if (mounted && _isRefreshing) {
+                    setState(() => _isRefreshing = false);
+                  }
+                });
+              });
+            },
           ),
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -604,7 +632,6 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
         ),
         body: Stack(
           children: [
-            // LAYER 1: WEBVIEW
             WebViewWidget(
               controller: _controller,
               gestureRecognizers: Set()
@@ -620,7 +647,6 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
                 ),
             ),
 
-            // LAYER 2: LOADING
             if (_isLoading) const LinearProgressIndicator(),
 
             if (_isViolationLocked)
@@ -678,7 +704,6 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
                 ),
               ),
 
-            // LAYER 3: TIRAI PELINDUNG (UNTUK SEMUA MODE)
             // if (_isObscured)
             //   Container(
             //     color: Color.fromARGB(228, 0, 0, 0),
