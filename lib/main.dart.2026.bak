@@ -329,16 +329,12 @@ class ExamPage extends StatefulWidget {
 class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _isLoading = true;
-  bool _isWebViewLoading = false;
   // bool _isObscured = false;
   bool _isRefreshing = false;
   bool _isViolationLocked = false;
   String _serverPassword = "jujur2025";
 
-  //final String _examUrl = "https://ujian.smkairlanggabpn.sch.id/";
-  String _examUrl = "";
-  bool _isConfigLoading = true;
-  bool _hasConfigError = false;
+  final String _examUrl = "https://ujian.smkairlanggabpn.sch.id/";
 
   @override
   void initState() {
@@ -374,7 +370,7 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
 
       if (isInsideExamRoom) {
         setState(() {
-          _isViolationLocked = true;
+          _isViolationLocked = true; 
         });
         // debugPrint("Pelanggaran di Ruang Ujian: Terkunci.");
       } else {
@@ -388,72 +384,19 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
   }
 
   Future<void> _fetchServerConfig() async {
-    // try {
-    //   final response = await http.get(
-    //     Uri.parse("https://ujian.smkairlanggabpn.sch.id/app-config.json"),
-    //   );
-
-    //   if (response.statusCode == 200) {
-    //     final data = jsonDecode(response.body);
-    //     setState(() {
-    //       _serverPassword = data['violation_password'].toString();
-    //     });
-    //   }
-    // } catch (e) {
-    // debugPrint("Gagal ambil config server, pakai default.");
-    // }
-    setState(() {
-      _isConfigLoading = true;
-      _hasConfigError = false;
-    });
-
     try {
-      // Tambahkan timeout 10 detik agar tidak stuck jika koneksi nyangkut
-      final response = await http
-          .get(
-            Uri.parse("https://ujian.smkairlanggabpn.sch.id/url-config.json"),
-          )
-          .timeout(const Duration(seconds: 10));
+      final response = await http.get(
+        Uri.parse("https://ujian.smkairlanggabpn.sch.id/app-config.json"),
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-
         setState(() {
           _serverPassword = data['violation_password'].toString();
         });
-
-        bool urlFound = false;
-        if (data['exam_list'] != null) {
-          List exams = data['exam_list'];
-          for (var exam in exams) {
-            if (exam['is_active'] == true) {
-              _examUrl = exam['url'];
-              urlFound = true;
-              break;
-            }
-          }
-        }
-
-        if (urlFound) {
-          setState(() {
-            _isConfigLoading = false;
-          });
-          print("URL Ujian Aktif: $_examUrl");
-          _controller.loadRequest(Uri.parse(_examUrl));
-        } else {
-          throw Exception("Tidak ada jadwal ujian yang aktif.");
-        }
-      } else {
-        throw Exception("Server merespon dengan error.");
       }
     } catch (e) {
-      setState(() {
-        print("===== ERROR FETCH CONFIG =====");
-        print(e.toString());
-        print("==============================");
-        _isConfigLoading = false;
-        _hasConfigError = true;
-      });
+      // debugPrint("Gagal ambil config server, pakai default.");
     }
   }
 
@@ -578,10 +521,9 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
         ),
       )
       ..setUserAgent(
-        // "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 ExamApp/2.2",
         "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36 ExamApp/2.2",
-      );
-    // ..loadRequest(Uri.parse(_examUrl));
+      )
+      ..loadRequest(Uri.parse(_examUrl));
   }
 
   Future<void> _exitApp() async {
@@ -649,8 +591,8 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
               ),
               Text(
                 widget.isBypassMode
-                    ? "MODE DARURAT v2.2.2"
-                    : "CBT Online v2.2.2",
+                    ? "MODE DARURAT v2.2.1"
+                    : "CBT Online v2.2.1",
                 style: TextStyle(
                   fontSize: 12,
                   color: widget.isBypassMode
@@ -693,96 +635,7 @@ class _ExamPageState extends State<ExamPage> with WidgetsBindingObserver {
                 ),
             ),
 
-            // if (_isLoading) const LinearProgressIndicator(),
-            if (!_isConfigLoading && !_hasConfigError)
-              WebViewWidget(
-                controller: _controller,
-                gestureRecognizers: Set()
-                  ..add(
-                    Factory<VerticalDragGestureRecognizer>(
-                      () => VerticalDragGestureRecognizer(),
-                    ),
-                  )
-                  ..add(
-                    Factory<EagerGestureRecognizer>(
-                      () => EagerGestureRecognizer(),
-                    ),
-                  ),
-              ),
-
-            // 2. Loading State (saat sedang fetch JSON atau WebView sedang loading URL pertama)
-            if (_isConfigLoading || _isWebViewLoading)
-              Container(
-                color:
-                    Colors.white, // Tutup layar dengan warna putih saat loading
-                child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 15),
-                      Text(
-                        "Menyiapkan Ujian...",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blueAccent,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-            // 3. Error State (saat gagal ngambil config JSON)
-            if (_hasConfigError)
-              Container(
-                color: Colors.white,
-                width: double.infinity,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.wifi_off,
-                      size: 80,
-                      color: Colors.redAccent,
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      "Gagal Terhubung ke Server",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 40),
-                      child: Text(
-                        "Pastikan HP terhubung ke jaringan ujian (Wi-Fi Sekolah) dan kuota/internet stabil.",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black54),
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 30,
-                          vertical: 15,
-                        ),
-                      ),
-                      icon: const Icon(Icons.refresh),
-                      label: const Text("COBA LAGI"),
-                      onPressed: () {
-                        // Coba tarik JSON lagi saat dipencet
-                        _fetchServerConfig();
-                      },
-                    ),
-                  ],
-                ),
-              ),
+            if (_isLoading) const LinearProgressIndicator(),
 
             if (_isViolationLocked)
               Container(
